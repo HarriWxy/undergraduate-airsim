@@ -1,2 +1,2 @@
-model_checkpoint_path: "FlappyBird"
-all_model_checkpoint_paths: "FlappyBird"
+model_checkpoint_path: "AirSim"
+all_model_checkpoint_paths: "AirSim"

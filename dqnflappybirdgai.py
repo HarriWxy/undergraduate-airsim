@@ -17,10 +17,10 @@ import get_stategcopy as state
 ACTIONS = 4 # 2个动作数量
 ACTIONS_NAME=['forward','back','roll_right','roll_left','yaw_left','yaw_right','higher','lower']  #动作名
 GAMMA = 0.99 # 未来奖励的衰减
-OBSERVE = 5. # 训练前观察积累的轮数
-EPSILON = 0.0001
+OBSERVE = 32. # 训练前观察积累的轮数
+EPSILON = 1
 REPLAY_MEMORY = 160 # 观测存储器D的容量
-BATCH = 5 # 训练batch大小
+BATCH = 32 # 训练batch大小
 old_time = 0
 
 class DQN_Net(Model):
@@ -105,7 +105,7 @@ def trainNetwork(istrain):
 #============================ 配置模型 ===========================================
     optimizer = tf.keras.optimizers.Adam(learning_rate = 1e-6, epsilon=1e-08)  #1e-6
 
-    epsilon = EPSILON
+    # epsilon = EPSILON
     t = 0 #初始化TIMESTEP
 
     # 加载保存的网络参数
@@ -138,6 +138,10 @@ def trainNetwork(istrain):
 
     # 开始训练
     while True:
+        if t < 1000000:
+            epsilon = EPSILON - ((1.0-0.1)/1000000)*t
+        else :
+            epsilon = 0.1
         # 根据输入的s_t,选择一个动作a_t
         readout_t = net1(tf.expand_dims(tf.constant(s_t, dtype=tf.float32), 0))
         print(readout_t)
@@ -227,7 +231,7 @@ def trainNetwork(istrain):
             b_done = tf.stack(b_done, axis=0)
 
             q_next = tf.reduce_max(net1(b_s_), axis=1)
-            q_truth = b_r + GAMMA * q_next* (tf.ones(5) - b_done)
+            q_truth = b_r + GAMMA * q_next* (tf.ones(32) - b_done)
 
             # 训练
             with tf.GradientTape() as tape:
