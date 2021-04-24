@@ -73,6 +73,7 @@ class FlyingState:
         # print(image_data)
         # image_data=np.reshape(image_data,[response.height,response.width,3])
         image_data=np.flipud(image_data)
+        # image_data=image_data[:,:]
         # # [height,width,channel]=image_data.shape
         ret, image_data = cv.threshold(image_data, 1, 255, cv.THRESH_BINARY)
         luminance=cv.cvtColor(image_data, cv.COLOR_BGR2HSV)

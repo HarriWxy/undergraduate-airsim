@@ -13,10 +13,9 @@ import os
 import matplotlib.pyplot as plt
 import datetime
 
-from tornado.util import xrange 
 os.environ['CUDA_VISIBLE_DEVICES']='0'
 
-import get_stategcopy as state
+import get_state as state
 
 ACTIONS = 6 # 4个动作数量
 ACTIONS_NAME=['forward','back','roll_right','roll_left','higher','lower','yaw_left','yaw_right']  #动作名
