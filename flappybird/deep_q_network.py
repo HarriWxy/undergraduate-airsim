@@ -14,6 +14,8 @@ import numpy as np
 from collections import deque
 import os 
 os.environ['CUDA_VISIBLE_DEVICES']='0'
+import datetime
+import matplotlib.pyplot as plt
 
 sys.path.append("game/")
 import wrapped_flappy_bird as game
@@ -22,11 +24,10 @@ GAME = 'FlappyBird' # 游戏名称
 ACTIONS = 2 # 2个动作数量
 ACTIONS_NAME=['不动','起飞']  #动作名
 GAMMA = 0.99 # 未来奖励的衰减
-OBSERVE = 10000. # 训练前观察积累的轮数
-EPSILON = 0.0001
-REPLAY_MEMORY = 50000 # 观测存储器D的容量
+OBSERVE = 1000. # 训练前观察积累的轮数
+EPSILON = 1
+REPLAY_MEMORY = 2000 # 观测存储器D的容量
 BATCH = 32 # 训练batch大小
-old_time = 0
 
 class MyNet(Model):
     def __init__(self):
@@ -88,6 +89,10 @@ def trainNetwork(istrain):
     optimizer=tf.keras.optimizers.RMSprop(0.00025,0.99,0.0,1e-7)
 
     t = 0 #初始化TIMESTEP
+    losses=[]
+    scores=[]
+    Loss=0
+    Score=0
 
     # 加载保存的网络参数
     checkpoint_save_path = "./model/FlappyBird"
@@ -127,7 +132,7 @@ def trainNetwork(istrain):
         #贪婪策略，有episilon的几率随机选择动作去探索，否则选取Q值最大的动作
         if random.random() <= epsilon and istrain:
             print("----------Random Action----------")
-            action_index = random.randrange(ACTIONS)
+            action_index = 0 if random.random() < 0.8 else 1
             a_t_to_game[action_index] = 1
         else:
             print("-----------net choice----------------")
@@ -141,6 +146,7 @@ def trainNetwork(istrain):
         s_t1, r_t, terminal, score = game_state.frame_step(a_t_to_game)
         print("============== score ====================")
         print(score)
+        Score+=score
 
         
         #if score_one_round >= best:
@@ -150,24 +156,25 @@ def trainNetwork(istrain):
             net1.save_weights(best_checkpoint_save_path)
             rank_file_w = open("rank.txt","w")
             rank_file_w.write("%d" % score)
-            print("********** best score updated!! *********")
             rank_file_w.close()
+            print("********** best score updated!! *********")
             best = score
+            netstar.set_weights(net1.get_weights())
         # if score >= best:
         #     f = open("scores.txt","a")
         #     f.write("========= %d ========== %d \n" % (t+old_time, score))
         #     f.close()
 
-        a_t = action_index
+        # a_t = action_index
 
         s_t = tf.convert_to_tensor(s_t, dtype=tf.float32)
-        a_t = tf.constant(a_t, dtype=tf.int32)
+        action_index = tf.constant(action_index, dtype=tf.int32)
         r_t = tf.constant(r_t, dtype=tf.float32)
         s_t1 = tf.constant(s_t1, dtype=tf.float32)
         terminal = tf.constant(terminal, dtype=tf.float32)
 
         # 将观测值存入之前定义的观测存储器D中
-        D.append((s_t, a_t, r_t, s_t1, terminal))
+        D.append((s_t, action_index, r_t, s_t1, terminal))
         #如果D满了就替换最早的观测
         if len(D) > REPLAY_MEMORY:
             D.popleft()
@@ -199,39 +206,67 @@ def trainNetwork(istrain):
                 b_done.append(d[4])
 
             b_s = tf.stack(b_s, axis=0)
-            b_a = tf.expand_dims(b_a, axis=1)
+            b_a = tf.expand_dims(b_a, axis=1) # 将一维的动作索引扩展成二维，每一个是独立的
             b_a = tf.stack(b_a, axis=0)
             b_r = tf.stack(b_r, axis=0)
             b_s_ = tf.stack(b_s_, axis=0)
             b_done = tf.stack(b_done, axis=0)
 
-            q_next = tf.reduce_max(net1(b_s_), axis=1)
-            q_truth = b_r + GAMMA * q_next* (tf.ones(BATCH) - b_done)
+    
 
             # 训练
             with tf.GradientTape() as tape:
                 q_output = net1(b_s)
-                index = tf.expand_dims(tf.constant(np.arange(0, BATCH), dtype=tf.int32), 1)
-                index_b_a = tf.concat((index, b_a), axis=1)
-                q = tf.gather_nd(q_output, index_b_a)
+                index = tf.expand_dims(tf.range(0, BATCH), 1) # index的二维向量
+                # DDQN
+                q_next = netstar(b_s_) # 每一行出一个最大值
+                
+                index_b_a = tf.concat((index, b_a), axis=1) # [batch_index,action_index]
+                q = tf.gather_nd(q_output, index_b_a) # 当前状态下选择这个动作得到的Q值
+                q_next = tf.gather_nd(q_next,index_b_a)
+
+                q_truth = b_r + GAMMA * q_next* (tf.ones(BATCH) - b_done)
+                
                 loss = tf.losses.MSE(q_truth, q)
+                Loss += loss
                 print("loss = %f" % loss)
                 gradients = tape.gradient(loss, net1.trainable_variables)
                 optimizer.apply_gradients(zip(gradients, net1.trainable_variables))
 
             # 每1000轮保存一次网络参数
-            if (t+old_time) % 1000 == 0:
+            if t % 1000 == 0:
                 print("=================model save====================")
                 net1.save_weights(checkpoint_save_path)
+                netstar.set_weights(net1.get_weights())
+                Score=Score/1000
+                Loss=Loss/1000
+                losses.append(Loss)
+                scores.append(Score)
+                Score=0
+                Loss=0
 
         # 打印信息
 
-        print("TIMESTEP", (t+old_time), "|  ACTION", ACTIONS_NAME[action_index], "|  REWARD", r_t)#, \
+        print("TIMESTEP", t, "|  ACTION", ACTIONS_NAME[action_index], "|  REWARD", r_t)#, \
         #    "|  Q_MAX %e \n" % np.max(readout_t))
         # write info to files
+    
+    plt.figure()
+    plt.plot(losses)
+    plt.xlabel("time")
+    plt.ylabel('loss')
+    plt.savefig('savefig'+datetime.datetime.now().strftime('%d-%H-%M')+'.png')
+    plt.figure()
+    plt.plot(scores)
+    plt.xlabel("time")
+    plt.ylabel('score')
+    plt.savefig('savefig'+datetime.datetime.now().strftime('%d-%H-%M')+'2.png')
+
+
+
 
 def main():
-    trainNetwork(istrain = False)
+    trainNetwork(istrain = True)
 
 if __name__ == "__main__":
     main()
