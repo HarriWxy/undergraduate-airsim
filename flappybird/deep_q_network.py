@@ -26,8 +26,9 @@ ACTIONS_NAME=['不动','起飞']  #动作名
 GAMMA = 0.99 # 未来奖励的衰减
 OBSERVE = 1000. # 训练前观察积累的轮数
 EPSILON = 1
-REPLAY_MEMORY = 2000 # 观测存储器D的容量
-BATCH = 32 # 训练batch大小
+REPLAY_MEMORY = 3600 # 观测存储器D的容量
+BATCH = 36 # 训练batch大小
+TIMES = 500000
 
 class MyNet(Model):
     def __init__(self):
@@ -86,7 +87,6 @@ def trainNetwork(istrain):
     netstar = MyNet()
 #============================ 配置模型 ===========================================
     # optimizer = tf.keras.optimizers.RMSprop(learning_rate = 1e-6, epsilon=1e-08)  #1e-6
-    optimizer=tf.keras.optimizers.RMSprop(0.00025,0.99,0.0,1e-7)
 
     t = 0 #初始化TIMESTEP
     losses=[]
@@ -122,9 +122,12 @@ def trainNetwork(istrain):
     #print(s_t.shape)
 
     # 开始训练
-    while t < 500001:
+    while t < TIMES+1:
         # 根据输入的s_t,选择一个动作a_t
-        epsilon = EPSILON - (EPSILON-0.1)/500000
+        epsilon = EPSILON - (EPSILON-0.1)*t/TIMES # 网络的过早介入会导致
+        # 学习率
+        learning_r=0.03-(0.03-0.00025)*t/TIMES
+        optimizer=tf.keras.optimizers.RMSprop(learning_r,0.99,0.0,1e-7)
         
         a_t_to_game = np.zeros([ACTIONS])
         action_index = 0

@@ -77,11 +77,9 @@ class FlyingState:
         # # [height,width,channel]=image_data.shape
         ret, image_data = cv.threshold(image_data, 1, 255, cv.THRESH_BINARY)
         luminance=cv.cvtColor(image_data, cv.COLOR_BGR2HSV)
-        # # image_data=image_data.astype(np.float)
-        image_data=np.array([image_data[:,:,0],image_data[:,:,1],image_data[:,:,2],luminance[:,:,2]],dtype=np.int)# 添加亮度信息
-        # image_temp=np.array([])
-        # image_data=cv.cvtColor(image_data,cv.COLOR_BGR2GRAY)
-        # print(image_data.shape)
+        luminance=luminance[:,:,2,np.newaxis]
+        image_data=np.concatenate((image_data,luminance),axis=2)  # 添加亮度信息
+
         score=self.score
         if Crash_info or self.score < -10:
             self.score=0
@@ -103,9 +101,10 @@ class FlyingState:
             return 0 if self.dest[0] > client_state.position.x_val else 1
         elif randint == 2:
             return 2 if self.dest[1] > client_state.position.y_val else 3
-        else :
+        elif randint ==3 :
             return 4 if self.dest[2] < client_state.position.z_val else 5
-
+        else:
+            return 6 if self.dest[1] > client_state.position.y_val else 7
 
 
 # responses=client.simGetImages([

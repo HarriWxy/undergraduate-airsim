@@ -55,7 +55,7 @@ class GameState:
         self.playerMaxVelY =  10   # max vel along Y, max descend speed
         self.playerMinVelY =  -8   # min vel along Y, max ascend speed
         self.playerAccY    =   1   # players downward accleration
-        self.playerFlapAcc =  -5   # players speed on flapping
+        self.playerFlapAcc =  -6   # players speed on flapping
         self.playerFlapped = False # True when player flaps
 
     def frame_step(self, input_actions):
@@ -145,8 +145,7 @@ class GameState:
         score = self.score
         #print self.upperPipes[0]['y'] + PIPE_HEIGHT - int(BASEY * 0.2)
         luminance=cv.cvtColor(image_data, cv.COLOR_BGR2HSV)
-        luminance=luminance[:,:,2]
-        luminance=luminance[:,:,np.newaxis]
+        luminance=luminance[:,:,2,np.newaxis]
         # # image_data=image_data.astype(np.float)
         image_data=np.concatenate((image_data,luminance),axis=2)  # 添加亮度信息
         return image_data, reward, terminal, score
