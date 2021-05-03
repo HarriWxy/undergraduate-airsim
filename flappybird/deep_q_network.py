@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 #============================ 导入所需的库 ===========================================
 from __future__ import print_function
+from re import A
 
 import tensorflow as tf
 
@@ -24,11 +25,11 @@ GAME = 'FlappyBird' # 游戏名称
 ACTIONS = 2 # 2个动作数量
 ACTIONS_NAME=['不动','起飞']  #动作名
 GAMMA = 0.99 # 未来奖励的衰减
-OBSERVE = 1000 # 训练前观察积累的轮数
+OBSERVE = 250 # 训练前观察积累的轮数
 EPSILON = 1
 REPLAY_MEMORY = OBSERVE # 观测存储器D的容量
-BATCH = 2 # 训练batch大小
-TIMES = 500000
+BATCH = 3 # 训练batch大小
+TIMES = 50000
 
 class MyNet(Model):
     def __init__(self):
@@ -51,10 +52,10 @@ class MyNet(Model):
         self.p2 = MaxPool2D(pool_size=(2, 2), strides=2, padding='same')  # 池化层
 
         self.flatten = Flatten()
-        self.f1 = Dense(256, activation='relu',
+        self.f1 = Dense(128, activation='relu',
                            kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.01, seed=None),
                            bias_initializer = tf.keras.initializers.Constant(value=0.01))
-        self.l1 = LSTM(256)
+        self.l1 = LSTM(128,dropout=0.2)
         self.f2 = Dense(ACTIONS, activation=None,
                            kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.01, seed=None),
                            bias_initializer = tf.keras.initializers.Constant(value=0.01))
@@ -80,7 +81,7 @@ class MyNet(Model):
         return y
 
 
-def trainNetwork(istrain):
+def trainNetwork(istrain, epco):
 #============================ 模型创建与加载 ===========================================
 
     # 模型创建
@@ -114,21 +115,26 @@ def trainNetwork(istrain):
     game_state = game.GameState()
 
     # 将每一轮的观测存在D中，之后训练从D中随机抽取batch个数据训练，以打破时间连续导致的相关性，保证神经网络训练所需的随机性。
-    D = deque(maxlen=REPLAY_MEMORY)
+    D = deque()
 
     #初始化状态并且预处理图片，把连续的四帧图像作为一个输入（State）
     do_nothing = np.zeros(ACTIONS)
     do_nothing[0] = 1
     x_t, r_0, terminal, _ = game_state.frame_step(do_nothing)
-    s_t = np.stack((x_t,x_t,x_t,x_t,x_t,x_t,x_t,x_t,x_t,x_t,x_t),axis=0)
+    s_t = np.stack((x_t,x_t,x_t,x_t,x_t),axis=0)
 
 
     # 开始训练
     while t < TIMES+1:
         # 根据输入的s_t,选择一个动作a_t
-        epsilon = EPSILON - (EPSILON-0.1)*t/TIMES # 网络的过早介入会导致
+         # 网络的过早介入会导致
         # 学习率
-        learning_r=0.02-(0.02-0.00025)*t/TIMES
+        if t < 30000:
+            epsilon = EPSILON - (EPSILON-0.1)*t/30000
+            learning_r=0.01-(0.01-0.00025)*t/30000
+        else :
+            epsilon = 0.1
+            learning_r=0.0025
         optimizer=tf.keras.optimizers.RMSprop(learning_r,0.99,0.0,1e-7)
         
         a_t_to_game = np.zeros([ACTIONS])
@@ -159,14 +165,6 @@ def trainNetwork(istrain):
         #if score_one_round >= best:
         #    test = True
 
-        if score > best:
-            net1.save_weights(best_checkpoint_save_path)
-            rank_file_w = open("rank.txt","w")
-            rank_file_w.write("%d" % score)
-            rank_file_w.close()
-            print("********** best score updated!! *********")
-            best = score
-            netstar.set_weights(net1.get_weights())
         # if score >= best:
         #     f = open("scores.txt","a")
         #     f.write("========= %d ========== %d \n" % (t+old_time, score))
@@ -182,8 +180,8 @@ def trainNetwork(istrain):
         # 将观测值存入之前定义的观测存储器D中
         D.append((x_t, action_index_D, r_t, terminal))
         #如果D满了就替换最早的观测
-        # if len(D) > REPLAY_MEMORY:
-        #     D.popleft()
+        if len(D) > REPLAY_MEMORY:
+            D.popleft()
 
         # 更新状态，不断迭代
         t += 1
@@ -192,6 +190,14 @@ def trainNetwork(istrain):
 
         # 观测一定轮数后开始训练
         if (t > OBSERVE) and istrain:
+            if score > best:
+                net1.save_weights(best_checkpoint_save_path)
+                rank_file_w = open("rank.txt","w")
+                rank_file_w.write("%d" % score)
+                rank_file_w.close()
+                print("********** best score updated!! *********")
+                best = score
+                netstar.set_weights(net1.get_weights())
             # 训练
             print("==================start train====================")
             with tf.GradientTape() as tape:
@@ -203,16 +209,15 @@ def trainNetwork(istrain):
                 loss += tf.losses.MSE(q_truth, q)
 
                 # minibatch
-                i = random.randint(0,REPLAY_MEMORY - 10)
-                b_s = tf.concat((D[i][0],D[i+1][0],D[i+2][0],D[i+3][0],D[i+4][0],D[i+5][0],D[i+6][0],D[i+7][0],\
-                                D[i+8][0],D[i+9][0]),axis=0)
-                b_a = int(D[i+8][1])
-                b_r = D[i+8][2]
-                b_done = D[i+8][3]
-                q = tf.reduce_max(net1(b_s[:-1]),axis=1)
-                q_next = netstar(b_s[1:])[0][b_a] # 每一行出一个最大值
-                q_truth = b_r + GAMMA * q_next* (tf.ones(1) - b_done)
-                loss += tf.losses.MSE(q_truth, q)
+                for i in random.sample(range(REPLAY_MEMORY - 6), BATCH-1): 
+                    b_s = tf.concat((D[i][0],D[i+1][0],D[i+2][0],D[i+3][0],D[i+4][0]),axis=0)
+                    b_a = int(D[i+3][1])
+                    b_r = D[i+3][2]
+                    b_done = D[i+3][3]
+                    q = tf.reduce_max(net1(b_s[:-1]),axis=1)
+                    q_next = netstar(b_s[1:])[0][b_a] # 每一行出一个最大值
+                    q_truth = b_r + GAMMA * q_next* (tf.ones(1) - b_done)
+                    loss += tf.losses.MSE(q_truth, q)
 
                 # 训练
                 loss = loss/BATCH
@@ -221,11 +226,13 @@ def trainNetwork(istrain):
                 gradients = tape.gradient(loss, net1.trainable_variables)
                 optimizer.apply_gradients(zip(gradients, net1.trainable_variables))
 
+            if t % 50==0 and t > OBSERVE:
+                netstar.set_weights(net1.get_weights())
+
             # 每1000轮保存一次网络参数
             if t % 1000 == 0:
-                print("=================model save====================")
+                # print("=================model save====================")
                 net1.save_weights(checkpoint_save_path)
-                netstar.set_weights(net1.get_weights())
                 Score=Score/1000
                 Loss=Loss/1000
                 losses.append(Loss)
@@ -240,21 +247,27 @@ def trainNetwork(istrain):
         # write info to files
     
     plt.figure()
+    plt.title("epcos="+str(epco))
     plt.plot(losses)
     plt.xlabel("time")
     plt.ylabel('loss')
     plt.savefig('savefig'+datetime.datetime.now().strftime('%d-%H-%M')+'.png')
     plt.figure()
+    plt.title("epcos="+str(epco))
     plt.plot(scores)
     plt.xlabel("time")
     plt.ylabel('score')
     plt.savefig('savefig'+datetime.datetime.now().strftime('%d-%H-%M')+'2.png')
+    return np.average(losses),np.average(scores)
 
 
 
 
 def main():
-    trainNetwork(istrain = True)
+    epco=1
+    while epco <= 10:
+        trainNetwork(istrain = True, epco=epco)
+        epco+=1
 
 if __name__ == "__main__":
     main()
