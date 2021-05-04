@@ -25,10 +25,10 @@ GAME = 'FlappyBird' # 游戏名称
 ACTIONS = 2 # 2个动作数量
 ACTIONS_NAME=['不动','起飞']  #动作名
 GAMMA = 0.99 # 未来奖励的衰减
-OBSERVE = 250 # 训练前观察积累的轮数
+OBSERVE = 20 # 训练前观察积累的轮数
 EPSILON = 1
 REPLAY_MEMORY = OBSERVE # 观测存储器D的容量
-BATCH = 3 # 训练batch大小
+BATCH = 2 # 训练batch大小
 TIMES = 50000
 
 class MyNet(Model):
@@ -39,7 +39,7 @@ class MyNet(Model):
                            bias_initializer = tf.keras.initializers.Constant(value=0.01))  # 卷积层
         self.a1_1 = Activation('relu')  # 激活层
         self.p1 = MaxPool2D(pool_size=(2, 2), strides=2, padding='same')  # 池化层
-        self.d1 = Dropout(0.2)  # dropout层
+        self.d1 = Dropout(0.1)  # dropout层
 
         self.c2_1 = Conv2D(filters=64, kernel_size=(4, 4),strides=2, padding='same',
                            kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.01, seed=None),
@@ -55,8 +55,8 @@ class MyNet(Model):
         self.f1 = Dense(128, activation='relu',
                            kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.01, seed=None),
                            bias_initializer = tf.keras.initializers.Constant(value=0.01))
-        self.l1 = LSTM(128,dropout=0.2)
-        self.f2 = Dense(ACTIONS, activation=None,
+        self.l1 = LSTM(128,dropout=0.1)
+        self.f2 = Dense(ACTIONS, activation='relu',
                            kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.01, seed=None),
                            bias_initializer = tf.keras.initializers.Constant(value=0.01))
 
@@ -65,7 +65,7 @@ class MyNet(Model):
         x = self.c1_1(x)
         x = self.a1_1(x)
         x = self.d1(x)
-        x = self.p1(x)
+        # x = self.p1(x)
 
         x = self.c2_1(x)
         x = self.a2_1(x)
@@ -78,6 +78,7 @@ class MyNet(Model):
         x = tf.expand_dims(x,axis=0)
         x = self.l1(x)
         y = self.f2(x)
+        print("y=",y)
         return y
 
 
@@ -129,9 +130,9 @@ def trainNetwork(istrain, epco):
         # 根据输入的s_t,选择一个动作a_t
          # 网络的过早介入会导致
         # 学习率
-        if t < 30000:
-            epsilon = EPSILON - (EPSILON-0.1)*t/30000
-            learning_r=0.01-(0.01-0.00025)*t/30000
+        if t < 45000:
+            epsilon = EPSILON - (EPSILON-0.1)*t/45000
+            learning_r=0.5-(0.01-0.00025)*t/45000
         else :
             epsilon = 0.1
             learning_r=0.0025
@@ -172,13 +173,13 @@ def trainNetwork(istrain, epco):
 
         # a_t = action_index
 
-        x_t = tf.convert_to_tensor(x_t, dtype=tf.float32)
+        x_t = tf.convert_to_tensor(x_t, dtype=tf.float32) # 下一帧
         action_index_D = tf.constant(action_index, dtype=tf.int32)
         r_t = tf.constant(r_t, dtype=tf.float32)
         terminal = tf.constant(terminal, dtype=tf.float32)
 
         # 将观测值存入之前定义的观测存储器D中
-        D.append((x_t, action_index_D, r_t, terminal))
+        D.append((x_t, r_t, terminal, action_index_D))
         #如果D满了就替换最早的观测
         if len(D) > REPLAY_MEMORY:
             D.popleft()
@@ -203,30 +204,33 @@ def trainNetwork(istrain, epco):
             with tf.GradientTape() as tape:
                 loss=0
                 s_t = tf.constant(s_t, dtype=tf.float32)
-                q =  tf.reduce_max(net1(s_t[:-1]),axis=1)
-                q_next = netstar(s_t[1:])[0][action_index] # 每一行出一个最大值
-                q_truth = r_t + GAMMA * q_next* (tf.ones(1) - terminal)
+                q = net1(s_t[:-1])[0][action_index]
+                q_index = tf.argmax(net1(s_t[1:])[0])
+                q_next = netstar(s_t[1:])[0][q_index] # 下一个状态的Y函数值
+                q_truth = r_t + GAMMA * q_next* (tf.ones(1) - terminal) # 
+                # print("q=",q,q_truth)
                 loss += tf.losses.MSE(q_truth, q)
 
                 # minibatch
-                for i in random.sample(range(REPLAY_MEMORY - 6), BATCH-1): 
+                for i in random.sample(range(REPLAY_MEMORY - 9), BATCH-1): 
                     b_s = tf.concat((D[i][0],D[i+1][0],D[i+2][0],D[i+3][0],D[i+4][0]),axis=0)
-                    b_a = int(D[i+3][1])
-                    b_r = D[i+3][2]
-                    b_done = D[i+3][3]
-                    q = tf.reduce_max(net1(b_s[:-1]),axis=1)
-                    q_next = netstar(b_s[1:])[0][b_a] # 每一行出一个最大值
+                    b_r = D[i+7][1]
+                    b_done = D[i+7][2]
+                    b_a = int(D[i+7][3])
+                    q = net1(b_s[:-1])[0][b_a]
+                    q_index = tf.argmax(net1(b_s[1:])[0])
+                    q_next = netstar(b_s[1:])[0][q_index] # 每一行出一个最大值
                     q_truth = b_r + GAMMA * q_next* (tf.ones(1) - b_done)
                     loss += tf.losses.MSE(q_truth, q)
 
-                # 训练
-                loss = loss/BATCH
+                # # 训练
+                # loss = loss/BATCH
                 Loss += loss
                 print("loss = %f" % loss)
                 gradients = tape.gradient(loss, net1.trainable_variables)
                 optimizer.apply_gradients(zip(gradients, net1.trainable_variables))
 
-            if t % 50==0 and t > OBSERVE:
+            if t % 30==0 and t > OBSERVE:
                 netstar.set_weights(net1.get_weights())
 
             # 每1000轮保存一次网络参数
