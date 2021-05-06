@@ -13,7 +13,9 @@ import sys
 import random
 import numpy as np
 from collections import deque
-import os 
+import os
+
+from tensorflow.python.ops.gen_linalg_ops import qr 
 os.environ['CUDA_VISIBLE_DEVICES']='0'
 import datetime
 import matplotlib.pyplot as plt
@@ -26,9 +28,9 @@ ACTIONS = 2 # 2个动作数量
 ACTIONS_NAME=['不动','起飞']  #动作名
 GAMMA = 0.99 # 未来奖励的衰减
 OBSERVE = 20 # 训练前观察积累的轮数
-EPSILON = 1
+EPSILON = 0.02
 REPLAY_MEMORY = OBSERVE # 观测存储器D的容量
-BATCH = 2 # 训练batch大小
+BATCH = 8 # 训练batch大小
 TIMES = 50000
 
 class MyNet(Model):
@@ -52,11 +54,11 @@ class MyNet(Model):
         self.p2 = MaxPool2D(pool_size=(2, 2), strides=2, padding='same')  # 池化层
 
         self.flatten = Flatten()
-        self.f1 = Dense(128, activation='relu',
+        self.f1 = Dense(256, activation='relu',
                            kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.01, seed=None),
                            bias_initializer = tf.keras.initializers.Constant(value=0.01))
-        self.l1 = LSTM(128,dropout=0.1)
-        self.f2 = Dense(ACTIONS, activation='relu',
+        self.l1 = LSTM(256,dropout=0.1)
+        self.f2 = Dense(ACTIONS, activation=None,
                            kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.01, seed=None),
                            bias_initializer = tf.keras.initializers.Constant(value=0.01))
 
@@ -65,7 +67,7 @@ class MyNet(Model):
         x = self.c1_1(x)
         x = self.a1_1(x)
         x = self.d1(x)
-        # x = self.p1(x)
+        x = self.p1(x)
 
         x = self.c2_1(x)
         x = self.a2_1(x)
@@ -82,7 +84,7 @@ class MyNet(Model):
         return y
 
 
-def trainNetwork(istrain, epco):
+def trainNetwork(istrain, epoch):
 #============================ 模型创建与加载 ===========================================
 
     # 模型创建
@@ -131,11 +133,13 @@ def trainNetwork(istrain, epco):
          # 网络的过早介入会导致
         # 学习率
         if t < 45000:
-            epsilon = EPSILON - (EPSILON-0.1)*t/45000
-            learning_r=0.5-(0.01-0.00025)*t/45000
+            epsilon = EPSILON - (EPSILON-0.01)*t/45000
+        else:
+            epsilon = 0.01
+        if t < 45000 and epoch < 2:
+            learning_r= 0.001 #- (0.001-0.00025)*t/45000
         else :
-            epsilon = 0.1
-            learning_r=0.0025
+            learning_r=0.001
         optimizer=tf.keras.optimizers.RMSprop(learning_r,0.99,0.0,1e-7)
         
         a_t_to_game = np.zeros([ACTIONS])
@@ -156,6 +160,7 @@ def trainNetwork(istrain, epco):
 
         #执行这个动作并观察下一个状态以及reward
         x_t, r_t, terminal, score = game_state.frame_step(a_t_to_game)
+        print(terminal)
         x_t = x_t[np.newaxis,:]
         s_t = np.concatenate((s_t[1:],x_t))
         print("============== score ====================")
@@ -202,35 +207,44 @@ def trainNetwork(istrain, epco):
             # 训练
             print("==================start train====================")
             with tf.GradientTape() as tape:
-                loss=0
                 s_t = tf.constant(s_t, dtype=tf.float32)
                 q = net1(s_t[:-1])[0][action_index]
-                q_index = tf.argmax(net1(s_t[1:])[0])
-                q_next = netstar(s_t[1:])[0][q_index] # 下一个状态的Y函数值
-                q_truth = r_t + GAMMA * q_next* (tf.ones(1) - terminal) # 
+                q_next = netstar(s_t[1:])[0][action_index] # 下一个状态的Y函数值
+                # q_truth = tf.expand_dims(r_t + GAMMA * q_next* (tf.ones(1) - terminal),0)
+                q_truth = r_t + GAMMA * q_next* (tf.ones(1) - terminal)
+                # print(q_truth)
                 # print("q=",q,q_truth)
-                loss += tf.losses.MSE(q_truth, q)
+                loss = tf.losses.MSE(q_truth, q)
 
                 # minibatch
-                for i in random.sample(range(REPLAY_MEMORY - 9), BATCH-1): 
-                    b_s = tf.concat((D[i][0],D[i+1][0],D[i+2][0],D[i+3][0],D[i+4][0]),axis=0)
-                    b_r = D[i+7][1]
-                    b_done = D[i+7][2]
-                    b_a = int(D[i+7][3])
-                    q = net1(b_s[:-1])[0][b_a]
-                    q_index = tf.argmax(net1(b_s[1:])[0])
-                    q_next = netstar(b_s[1:])[0][q_index] # 每一行出一个最大值
-                    q_truth = b_r + GAMMA * q_next* (tf.ones(1) - b_done)
-                    loss += tf.losses.MSE(q_truth, q)
+                # for i in random.sample(range(REPLAY_MEMORY - 4), BATCH): 
+                #     b_s = tf.concat((D[i][0],D[i+1][0],D[i+2][0],D[i+3][0],D[i+4][0]),axis=0)
+                #     b_r = D[i+4][1]
+                #     b_done = D[i+4][2]
+                #     b_a = int(D[i+4][3])
+                #     q = net1(b_s[:-1])[0][b_a]
+                #     # print(q)
+                #      # 每一行出一个最大值
+                #     if q < -10 :
+                #         q_truth=tf.expand_dims(tf.constant(-10,dtype=tf.float32),0)
+                #     elif q > 30:
+                #         q_truth=tf.expand_dims(tf.constant(30,dtype=tf.float32),0)
+                #     else :
+                #         q_next = netstar(b_s[1:])[0][b_a]
+                #         q_truth = tf.expand_dims(b_r + GAMMA * q_next* (tf.ones(1) - b_done),0)
+                #         # print(q_truth)
+                    
+                #     loss += tf.losses.MSE(q_truth, q)
+                #     # loss+=tf.square((q_truth-q))
 
                 # # 训练
-                # loss = loss/BATCH
+                loss = loss/(BATCH+1)
                 Loss += loss
                 print("loss = %f" % loss)
-                gradients = tape.gradient(loss, net1.trainable_variables)
-                optimizer.apply_gradients(zip(gradients, net1.trainable_variables))
+            gradients = tape.gradient(loss, net1.trainable_variables)
+            optimizer.apply_gradients(zip(gradients, net1.trainable_variables))
 
-            if t % 30==0 and t > OBSERVE:
+            if t % 100==0 and t > OBSERVE:
                 netstar.set_weights(net1.get_weights())
 
             # 每1000轮保存一次网络参数
@@ -251,13 +265,13 @@ def trainNetwork(istrain, epco):
         # write info to files
     
     plt.figure()
-    plt.title("epcos="+str(epco))
+    plt.title("epochs="+str(epoch))
     plt.plot(losses)
     plt.xlabel("time")
     plt.ylabel('loss')
     plt.savefig('savefig'+datetime.datetime.now().strftime('%d-%H-%M')+'.png')
     plt.figure()
-    plt.title("epcos="+str(epco))
+    plt.title("epochs="+str(epoch))
     plt.plot(scores)
     plt.xlabel("time")
     plt.ylabel('score')
@@ -268,10 +282,10 @@ def trainNetwork(istrain, epco):
 
 
 def main():
-    epco=1
-    while epco <= 10:
-        trainNetwork(istrain = True, epco=epco)
-        epco+=1
+    epoch=1
+    while epoch <= 10:
+        trainNetwork(istrain = True, epoch=epoch)
+        epoch+=1
 
 if __name__ == "__main__":
     main()

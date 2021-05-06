@@ -47,9 +47,9 @@ class FlyingState:
         elif input_actions[5] == 1:
             self.client.moveByRollPitchYawrateThrottleAsync(0.0,0.0,0.0,0.5,0.5).join()
         elif input_actions[6] == 1:
-            self.client.moveByRollPitchYawrateThrottleAsync(0.0,0.0,15.0,0.8,0.5).join()
+            self.client.moveByRollPitchYawrateThrottleAsync(0.0,0.0,0.2,0.6,0.5).join()
         elif input_actions[7] == 1:
-            self.client.moveByRollPitchYawrateThrottleAsync(0.0,0.0,-15.0,0.8,0.5).join()
+            self.client.moveByRollPitchYawrateThrottleAsync(0.0,0.0,-0.2,0.6,0.5).join()
 
         # client state
         client_state=self.client.getMultirotorState().kinematics_estimated
@@ -93,18 +93,26 @@ class FlyingState:
             terminal=True
             self.linkToAirsim()
             score+=reward
-        return image_data, reward, terminal, score
+
+        directions=np.zeros(3)
+        # 目标在前
+        directions[0] = 1 if self.dest[0] > client_state.position.x_val else -1 
+        # 目标在右
+        directions[1] = 1 if self.dest[1] > client_state.position.x_val else -1 
+        # 目标在下
+        directions[2] = 1 if self.dest[0] < client_state.position.x_val else -1 
+        return image_data, reward, terminal, score, directions
 
     def rand_action(self,randint):
         client_state=self.client.getMultirotorState().kinematics_estimated
-        if randint == 1:
+        if randint == 0:
             return 0 if self.dest[0] > client_state.position.x_val else 1
-        elif randint == 2:
+        elif randint == 1:
             return 2 if self.dest[1] > client_state.position.y_val else 3
-        elif randint ==3 :
+        elif randint == 2:
             return 4 if self.dest[2] < client_state.position.z_val else 5
         else:
-            return 6 if self.dest[1] > client_state.position.y_val else 7
+            return 7 if self.dest[1] > client_state.position.y_val else 6
 
 
 # responses=client.simGetImages([

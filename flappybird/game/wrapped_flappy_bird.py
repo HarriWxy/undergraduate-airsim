@@ -50,18 +50,18 @@ class GameState:
         ]
 
         # player velocity, max velocity, downward accleration, accleration on flap
-        self.pipeVelX = -4
+        self.pipeVelX = -10
         self.playerVelY    =  0    # player's velocity along Y, default same as playerFlapped
         self.playerMaxVelY =  10   # max vel along Y, max descend speed
         self.playerMinVelY =  -8   # min vel along Y, max ascend speed
         self.playerAccY    =   1   # players downward accleration
-        self.playerFlapAcc =  -6   # players speed on flapping
+        self.playerFlapAcc =  -3   # players speed on flapping
         self.playerFlapped = False # True when player flaps
 
     def frame_step(self, input_actions):
         pygame.event.pump()
 
-        reward = 0.1
+        reward = 0
         terminal = False
 
         if sum(input_actions) != 1:
@@ -105,7 +105,7 @@ class GameState:
             lPipe['x'] += self.pipeVelX
 
         # add new pipe when first pipe is about to touch left of screen
-        if 0 < self.upperPipes[0]['x'] < 5:
+        if 0 < self.upperPipes[0]['x'] < 10:
             newPipe = getRandomPipe()
             self.upperPipes.append(newPipe[0])
             self.lowerPipes.append(newPipe[1])
