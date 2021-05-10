@@ -87,9 +87,9 @@ class FlyingState:
             self.linkToAirsim()
             reward=-1
             score+=reward
-        if dis_this < 1:
+        if dis_this < 5:
             self.score=0
-            reward = 100
+            reward = 10
             terminal=True
             self.linkToAirsim()
             score+=reward
@@ -109,10 +109,10 @@ class FlyingState:
             return 0 if self.dest[0] > client_state.position.x_val else 1
         elif randint == 1:
             return 2 if self.dest[1] > client_state.position.y_val else 3
-        elif randint == 2:
+        else:#if randint == 2:
             return 4 if self.dest[2] < client_state.position.z_val else 5
-        else:
-            return 7 if self.dest[1] > client_state.position.y_val else 6
+        # else:
+        #     return 7 if self.dest[1] > client_state.position.y_val else 6
 
 
 # responses=client.simGetImages([

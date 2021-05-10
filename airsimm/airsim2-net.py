@@ -17,14 +17,14 @@ os.environ['CUDA_VISIBLE_DEVICES']='0'
 
 import get_state as state
 
-ACTIONS = 8 # 4个动作数量
+ACTIONS = 6 # 4个动作数量
 ACTIONS_NAME=['forward','back','roll_right','roll_left','higher','lower','yaw_left','yaw_right']  #动作名
 GAMMA = 0.99 # 未来奖励的衰减
 OBSERVE = 10 # 训练前观察积累的轮数
-EPSILON = 1
+EPSILON = 0.95
 REPLAY_MEMORY = OBSERVE # 观测存储器D的容量
-BATCH = 3 # 训练batch大小
-TIMES = 500
+BATCH = 5 # 训练batch大小
+TIMES = 2000
 
 class DQN_Net(Model):
     # 使用论文中的标准网络结构
@@ -48,10 +48,11 @@ class DQN_Net(Model):
         self.p2 = MaxPool2D(pool_size=(2, 2), strides=2, padding='same')  # 池化层
 
         self.flatten = Flatten()
-        self.f1 = Dense(256, activation='relu',
+        self.f1 = Dense(512, activation='relu',
+                           kernel_regularizer=tf.keras.regularizers.l2(0.001),
                            kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.01, seed=None),
                            bias_initializer = tf.keras.initializers.Constant(value=0.01))
-        self.l1 = LSTM(256,dropout=0.1)
+        self.l1 = LSTM(512,dropout=0.1,kernel_regularizer=tf.keras.regularizers.l2(0.001))
         self.f2 = Dense(ACTIONS, activation=None,
                            kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.01, seed=None),
                            bias_initializer = tf.keras.initializers.Constant(value=0.01))
@@ -85,20 +86,25 @@ class AirsimDQN(object):
         #============================ 模型创建与加载 ===========================================
         self.net = DQN_Net()
         self.netstar = DQN_Net()
-        self.checkpoint_save_path = "./model/FlappyBird"
+        self.checkpoint_save_path = "./model/AirSim"
         if os.path.exists(self.checkpoint_save_path + '.index'):
             print('-------------load the model-----------------')
             self.net.load_weights(self.checkpoint_save_path)
         else:
             print('-------------train new model-----------------')
-        self.best_checkpoint_save_path = "./best/FlappyBird"
+        self.best_checkpoint_save_path = "./best/AirSim"
         if os.path.exists(self.best_checkpoint_save_path + '.index'):
             self.netstar.load_weights(self.best_checkpoint_save_path)
         # 最高分的加载
         rank_file_r = open("rank.txt","r")
         self.best = int(rank_file_r.readline())
         rank_file_r.close()
-        self.epoch = 0        
+        self.epoch = 0     
+        # current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        # train_log_dir = 'logs/gradient_tape/' + current_time + '/train'
+        # test_log_dir = 'logs/gradient_tape/' + current_time + '/test'
+        # self.train_summary_writer = tf.summary.create_file_writer(train_log_dir)
+        # self.test_summary_writer = tf.summary.create_file_writer(test_log_dir)   
 
     def trainNetwork(self,istrain):
         self.epoch+=1
@@ -116,7 +122,7 @@ class AirsimDQN(object):
     #============================ 加载(搜集)数据集 ===========================================
 
         # 打开游戏
-        flying_state = state.FlyingState(20,20,-30)
+        flying_state = state.FlyingState(random.randint(-30,30),random.randint(-30,30),-30)
 
         # 将每一轮的观测存在D中，之后训练从D中随机抽取batch个数据训练，以打破时间连续导致的相关性，保证神经网络训练所需的随机性。
         D = deque()
@@ -133,12 +139,12 @@ class AirsimDQN(object):
             # 根据输入的s_t,选择一个动作a_t
             # 网络的过早介入会导致
             # 学习率
-            if t < 450 and self.epoch:
-                epsilon = EPSILON - (EPSILON-0.1)*t/450
+            if t < 1500 :
+                epsilon = EPSILON - (EPSILON-0.1)*t/1500
                 learning_r= 0.001# - (0.001-0.00025)*t/450
             else :
-                epsilon = 0.001
-                learning_r=0.0025
+                epsilon = 0.1
+                learning_r=0.00075
             optimizer=tf.keras.optimizers.RMSprop(learning_r,0.99,0.0,1e-7)
             
             a_t_to_game = np.zeros([ACTIONS])
@@ -164,8 +170,8 @@ class AirsimDQN(object):
             s_t = np.concatenate((s_t[1:],x_t))
             print("============== score ====================")
             print(score)
-            Score+=score
-
+            if t > 1500 :
+                scores.append(score)
             
             #if score_one_round >= best:
             #    test = True
@@ -207,13 +213,12 @@ class AirsimDQN(object):
                 # 训练
                 print("==================start train====================")
                 with tf.GradientTape() as tape:
-                    loss=0
                     s_t = tf.constant(s_t, dtype=tf.float32)
                     q = self.net(s_t[:-1],directions)[0][action_index]
                     q_next = self.netstar(s_t[1:],directions)[0][action_index] # 下一个状态的Y函数值
                     q_truth = r_t + GAMMA * q_next* (tf.ones(1) - terminal) # 
                     # print("q=",q,q_truth)
-                    loss += tf.losses.MSE(q_truth, q)
+                    loss = tf.losses.MSE(q_truth, q)
 
                     # minibatch
                     for i in random.sample(range(REPLAY_MEMORY - 5), BATCH-1): 
@@ -241,11 +246,20 @@ class AirsimDQN(object):
                 if t % 50 == 0:
                     # print("=================model save====================")
                     self.net.save_weights(self.checkpoint_save_path)
-                    Score=Score/1000
-                    Loss=Loss/1000
+                    Loss=Loss/50
+
+                    # 这是使用tensorboard
+                    # with self.train_summary_writer.as_default():
+                    #     losses = np.array(losses)
+                    #     scores = np.array(scores)
+                    #     tf.summary.scalar('loss',Loss,self.epoch)
+                    #     tf.summary.scalar('score',Score,self.epoch)
+
+                    # 在此调用测试函数评估得分
+
                     losses.append(Loss)
-                    scores.append(Score)
-                    Score=0
+                    # scores.append(Score)
+                    # Score=0
                     Loss=0
 
             # 打印信息

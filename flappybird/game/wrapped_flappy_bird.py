@@ -54,8 +54,8 @@ class GameState:
         self.playerVelY    =  0    # player's velocity along Y, default same as playerFlapped
         self.playerMaxVelY =  10   # max vel along Y, max descend speed
         self.playerMinVelY =  -8   # min vel along Y, max ascend speed
-        self.playerAccY    =   1   # players downward accleration
-        self.playerFlapAcc =  -3   # players speed on flapping
+        self.playerAccY    =   1.2   # players downward accleration
+        self.playerFlapAcc =  -5   # players speed on flapping
         self.playerFlapped = False # True when player flaps
 
     def frame_step(self, input_actions):

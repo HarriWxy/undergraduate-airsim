@@ -28,9 +28,9 @@ ACTIONS = 2 # 2个动作数量
 ACTIONS_NAME=['不动','起飞']  #动作名
 GAMMA = 0.99 # 未来奖励的衰减
 OBSERVE = 20 # 训练前观察积累的轮数
-EPSILON = 0.02
+EPSILON = 0.9
 REPLAY_MEMORY = OBSERVE # 观测存储器D的容量
-BATCH = 8 # 训练batch大小
+BATCH = 6 # 训练batch大小
 TIMES = 50000
 
 class MyNet(Model):
@@ -54,10 +54,11 @@ class MyNet(Model):
         self.p2 = MaxPool2D(pool_size=(2, 2), strides=2, padding='same')  # 池化层
 
         self.flatten = Flatten()
-        self.f1 = Dense(256, activation='relu',
+        self.f1 = Dense(512, activation='relu',
+                           kernel_regularizer=tf.keras.regularizers.l2(0.001),
                            kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.01, seed=None),
                            bias_initializer = tf.keras.initializers.Constant(value=0.01))
-        self.l1 = LSTM(256,dropout=0.1)
+        self.l1 = LSTM(512,dropout=0.1,kernel_regularizer=tf.keras.regularizers.l2(0.001))
         self.f2 = Dense(ACTIONS, activation=None,
                            kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.01, seed=None),
                            bias_initializer = tf.keras.initializers.Constant(value=0.01))
@@ -133,13 +134,13 @@ def trainNetwork(istrain, epoch):
          # 网络的过早介入会导致
         # 学习率
         if t < 45000:
-            epsilon = EPSILON - (EPSILON-0.01)*t/45000
+            epsilon = EPSILON - (EPSILON-0.1)*t/45000
         else:
-            epsilon = 0.01
+            epsilon = 0.1
         if t < 45000 and epoch < 2:
-            learning_r= 0.001 #- (0.001-0.00025)*t/45000
+            learning_r= 0.001 - (0.001-0.00025)*t/45000
         else :
-            learning_r=0.001
+            learning_r=0.00025
         optimizer=tf.keras.optimizers.RMSprop(learning_r,0.99,0.0,1e-7)
         
         a_t_to_game = np.zeros([ACTIONS])
@@ -148,7 +149,7 @@ def trainNetwork(istrain, epoch):
         #贪婪策略，有episilon的几率随机选择动作去探索，否则选取Q值最大的动作
         if random.random() <= epsilon and istrain:
             print("----------Random Action----------")
-            action_index = 0 if random.random() < 0.8 else 1
+            action_index = 0 if random.random() < 0.7 else 1
             a_t_to_game[action_index] = 1
         else:
             print("-----------net choice----------------")
@@ -158,7 +159,8 @@ def trainNetwork(istrain, epoch):
             print(action_index)
             a_t_to_game[action_index] = 1
 
-        #执行这个动作并观察下一个状态以及reward
+        # 执行这个动作并观察下一个状态以及reward
+        # 也就是执行该动作的奖励加上执行这个动作之后的帧
         x_t, r_t, terminal, score = game_state.frame_step(a_t_to_game)
         print(terminal)
         x_t = x_t[np.newaxis,:]
@@ -217,24 +219,24 @@ def trainNetwork(istrain, epoch):
                 loss = tf.losses.MSE(q_truth, q)
 
                 # minibatch
-                # for i in random.sample(range(REPLAY_MEMORY - 4), BATCH): 
-                #     b_s = tf.concat((D[i][0],D[i+1][0],D[i+2][0],D[i+3][0],D[i+4][0]),axis=0)
-                #     b_r = D[i+4][1]
-                #     b_done = D[i+4][2]
-                #     b_a = int(D[i+4][3])
-                #     q = net1(b_s[:-1])[0][b_a]
+                for i in random.sample(range(REPLAY_MEMORY - 4), BATCH): 
+                    b_s = tf.concat((D[i][0],D[i+1][0],D[i+2][0],D[i+3][0],D[i+4][0]),axis=0)
+                    b_r = D[i+4][1]
+                    b_done = D[i+4][2]
+                    b_a = int(D[i+4][3])
+                    q = net1(b_s[:-1])[0][b_a]
                 #     # print(q)
                 #      # 每一行出一个最大值
-                #     if q < -10 :
-                #         q_truth=tf.expand_dims(tf.constant(-10,dtype=tf.float32),0)
-                #     elif q > 30:
-                #         q_truth=tf.expand_dims(tf.constant(30,dtype=tf.float32),0)
-                #     else :
-                #         q_next = netstar(b_s[1:])[0][b_a]
-                #         q_truth = tf.expand_dims(b_r + GAMMA * q_next* (tf.ones(1) - b_done),0)
-                #         # print(q_truth)
+                    # if q < -10 :
+                    #     q_truth=tf.expand_dims(tf.constant(-10,dtype=tf.float32),0)
+                    # elif q > 30:
+                    #     q_truth=tf.expand_dims(tf.constant(30,dtype=tf.float32),0)
+                    # else :
+                    q_next = netstar(b_s[1:])[0][b_a]
+                    q_truth = tf.expand_dims(b_r + GAMMA * q_next* (tf.ones(1) - b_done),0)
+                        # print(q_truth)
                     
-                #     loss += tf.losses.MSE(q_truth, q)
+                    loss += tf.losses.MSE(q_truth, q)
                 #     # loss+=tf.square((q_truth-q))
 
                 # # 训练
