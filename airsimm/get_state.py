@@ -27,8 +27,16 @@ class FlyingState:
         # 执行操作并获取帧
         reward = 0
         terminal = False
+        # 获取当前距离目标方向
         client_state=self.client.getMultirotorState()
         client_pre_pos=client_state.kinematics_estimated.position
+        directions=np.zeros(3)
+        # 目标在前
+        directions[0] = 1 if self.dest[0] > client_pre_pos.x_val else -1 
+        # 目标在右
+        directions[1] = 1 if self.dest[1] > client_pre_pos.y_val else -1 
+        # 目标在上
+        directions[2] = 1 if self.dest[2] < client_pre_pos.z_val else -1 
 
         if sum(input_actions) != 1:
             raise ValueError('Multiple input actions!')
@@ -85,22 +93,15 @@ class FlyingState:
             self.score=0
             terminal=True
             self.linkToAirsim()
-            reward=-1
+            reward=-5
             score+=reward
         if dis_this < 5:
             self.score=0
-            reward = 10
+            reward = 5
             terminal=True
             self.linkToAirsim()
             score+=reward
 
-        directions=np.zeros(3)
-        # 目标在前
-        directions[0] = 1 if self.dest[0] > client_state.position.x_val else -1 
-        # 目标在右
-        directions[1] = 1 if self.dest[1] > client_state.position.x_val else -1 
-        # 目标在下
-        directions[2] = 1 if self.dest[0] < client_state.position.x_val else -1 
         return image_data, reward, terminal, score, directions
 
     def rand_action(self,randint):

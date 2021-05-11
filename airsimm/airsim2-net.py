@@ -22,8 +22,8 @@ ACTIONS_NAME=['forward','back','roll_right','roll_left','higher','lower','yaw_le
 GAMMA = 0.99 # 未来奖励的衰减
 OBSERVE = 10 # 训练前观察积累的轮数
 EPSILON = 0.95
-REPLAY_MEMORY = OBSERVE # 观测存储器D的容量
-BATCH = 5 # 训练batch大小
+REPLAY_MEMORY = 250# 观测存储器D的容量
+BATCH = 7 # 训练batch大小
 TIMES = 2000
 
 class DQN_Net(Model):
@@ -48,11 +48,11 @@ class DQN_Net(Model):
         self.p2 = MaxPool2D(pool_size=(2, 2), strides=2, padding='same')  # 池化层
 
         self.flatten = Flatten()
-        self.f1 = Dense(512, activation='relu',
+        self.f1 = Dense(256, activation='relu',
                            kernel_regularizer=tf.keras.regularizers.l2(0.001),
                            kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.01, seed=None),
                            bias_initializer = tf.keras.initializers.Constant(value=0.01))
-        self.l1 = LSTM(512,dropout=0.1,kernel_regularizer=tf.keras.regularizers.l2(0.001))
+        self.l1 = LSTM(256,dropout=0.1,kernel_regularizer=tf.keras.regularizers.l2(0.001))
         self.f2 = Dense(ACTIONS, activation=None,
                            kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.01, seed=None),
                            bias_initializer = tf.keras.initializers.Constant(value=0.01))
@@ -115,7 +115,9 @@ class AirsimDQN(object):
         losses=[]
         scores=[]
         Loss=0
-        Score=0
+        Q=0
+        qs=[]
+        # Score=0
 
         # 加载保存的网络参数
        
@@ -166,12 +168,12 @@ class AirsimDQN(object):
 
             #执行这个动作并观察下一个状态以及reward
             x_t, r_t, terminal, score, directions = flying_state.frame_step(a_t_to_game)
-            x_t = x_t[np.newaxis,:]
-            s_t = np.concatenate((s_t[1:],x_t))
+            x_t_n = x_t[np.newaxis,:]
+            s_t = np.concatenate((s_t[1:],x_t_n))
             print("============== score ====================")
             print(score)
             if t > 1500 :
-                scores.append(score)
+                scores.append(r_t)
             
             #if score_one_round >= best:
             #    test = True
@@ -183,14 +185,17 @@ class AirsimDQN(object):
 
             # a_t = action_index
 
-            x_t = tf.convert_to_tensor(x_t, dtype=tf.float32) # 下一帧
+            s_t_D = tf.convert_to_tensor(s_t, dtype=tf.float32) # 下一帧
             action_index_D = tf.constant(action_index, dtype=tf.int32)
             r_t = tf.constant(r_t, dtype=tf.float32)
-            terminal = tf.constant(terminal, dtype=tf.float32)
+            terminal_D = tf.constant(terminal, dtype=tf.float32)
             directions = tf.convert_to_tensor(directions,dtype=tf.float32)
 
+            # 如果回合结束下一个状态重新开始
+            if terminal :
+                s_t = np.stack((x_t,x_t,x_t,x_t,x_t),axis=0)
             # 将观测值存入之前定义的观测存储器D中
-            D.append((x_t, r_t, terminal, action_index_D, directions))
+            D.append((s_t_D, r_t, terminal_D, action_index_D, directions))
             #如果D满了就替换最早的观测
             if len(D) > REPLAY_MEMORY:
                 D.popleft()
@@ -213,22 +218,26 @@ class AirsimDQN(object):
                 # 训练
                 print("==================start train====================")
                 with tf.GradientTape() as tape:
-                    s_t = tf.constant(s_t, dtype=tf.float32)
-                    q = self.net(s_t[:-1],directions)[0][action_index]
-                    q_next = self.netstar(s_t[1:],directions)[0][action_index] # 下一个状态的Y函数值
+                    q = self.net(s_t_D[:-1],directions)[0][action_index]
+                    q_next = self.netstar(s_t_D[1:],directions)[0][action_index] # 下一个状态的Y函数值
                     q_truth = r_t + GAMMA * q_next* (tf.ones(1) - terminal) # 
                     # print("q=",q,q_truth)
                     loss = tf.losses.MSE(q_truth, q)
+                    Q+=int(q)
 
                     # minibatch
-                    for i in random.sample(range(REPLAY_MEMORY - 5), BATCH-1): 
-                        b_s = tf.concat((D[i][0],D[i+1][0],D[i+2][0],D[i+3][0],D[i+4][0]),axis=0)
-                        b_r = D[i+4][1]
-                        b_done = D[i+4][2]
-                        b_a = int(D[i+4][3])
-                        b_d = D[i+4][4]
+                    for i in random.sample(D, BATCH-1): 
+                        b_s = i[0]
+                        b_r = i[1]
+                        b_done = i[2]
+                        b_a = int(i[3])
+                        b_d = i[4]
                         q = self.net(b_s[:-1],b_d)[0][b_a]
                         q_next = self.netstar(b_s[1:],b_d)[0][b_a] # 每一行出一个最大值
+                        if int(q_next) < -10:
+                            q_next = tf.constant(-10,dtype=tf.float32)
+                        elif int(q_next) > 50:
+                            q_next = tf.constant(50,dtype=tf.float32)
                         q_truth = b_r + GAMMA * q_next* (tf.ones(1) - b_done)
                         loss += tf.losses.MSE(q_truth, q)
 
@@ -246,7 +255,8 @@ class AirsimDQN(object):
                 if t % 50 == 0:
                     # print("=================model save====================")
                     self.net.save_weights(self.checkpoint_save_path)
-                    Loss=Loss/50
+                    Loss = Loss/50
+                    Q = Q/50
 
                     # 这是使用tensorboard
                     # with self.train_summary_writer.as_default():
@@ -258,9 +268,11 @@ class AirsimDQN(object):
                     # 在此调用测试函数评估得分
 
                     losses.append(Loss)
+                    qs.append(Q)
                     # scores.append(Score)
                     # Score=0
-                    Loss=0
+                    Loss = 0
+                    Q = 0
 
             # 打印信息
 
@@ -276,9 +288,10 @@ class AirsimDQN(object):
         plt.savefig('savefig'+datetime.datetime.now().strftime('%d-%H-%M')+'.png')
         plt.figure()
         plt.title("epochs="+str(self.epoch))
-        plt.plot(scores)
+        plt.plot(scores,'b')
         plt.xlabel("time")
         plt.ylabel('score')
+        plt.plot(qs,'c--')
         plt.savefig('savefig'+datetime.datetime.now().strftime('%d-%H-%M')+'2.png')
 
 

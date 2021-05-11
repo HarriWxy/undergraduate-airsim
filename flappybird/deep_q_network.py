@@ -54,11 +54,11 @@ class MyNet(Model):
         self.p2 = MaxPool2D(pool_size=(2, 2), strides=2, padding='same')  # 池化层
 
         self.flatten = Flatten()
-        self.f1 = Dense(512, activation='relu',
+        self.f1 = Dense(256, activation='relu',
                            kernel_regularizer=tf.keras.regularizers.l2(0.001),
                            kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.01, seed=None),
                            bias_initializer = tf.keras.initializers.Constant(value=0.01))
-        self.l1 = LSTM(512,dropout=0.1,kernel_regularizer=tf.keras.regularizers.l2(0.001))
+        self.l1 = LSTM(256,dropout=0.1,kernel_regularizer=tf.keras.regularizers.l2(0.001))
         self.f2 = Dense(ACTIONS, activation=None,
                            kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.01, seed=None),
                            bias_initializer = tf.keras.initializers.Constant(value=0.01))
@@ -120,6 +120,7 @@ def trainNetwork(istrain, epoch):
 
     # 将每一轮的观测存在D中，之后训练从D中随机抽取batch个数据训练，以打破时间连续导致的相关性，保证神经网络训练所需的随机性。
     D = deque()
+    episo = deque()
 
     #初始化状态并且预处理图片，把连续的四帧图像作为一个输入（State）
     do_nothing = np.zeros(ACTIONS)
@@ -163,8 +164,8 @@ def trainNetwork(istrain, epoch):
         # 也就是执行该动作的奖励加上执行这个动作之后的帧
         x_t, r_t, terminal, score = game_state.frame_step(a_t_to_game)
         print(terminal)
-        x_t = x_t[np.newaxis,:]
-        s_t = np.concatenate((s_t[1:],x_t))
+        x_t_n = x_t[np.newaxis,:]
+        s_t = np.concatenate((s_t[1:],x_t_n))
         print("============== score ====================")
         print(score)
         Score+=score
@@ -180,13 +181,18 @@ def trainNetwork(istrain, epoch):
 
         # a_t = action_index
 
-        x_t = tf.convert_to_tensor(x_t, dtype=tf.float32) # 下一帧
+        s_t_D = tf.constant(s_t, dtype=tf.float32) # 下一帧
         action_index_D = tf.constant(action_index, dtype=tf.int32)
         r_t = tf.constant(r_t, dtype=tf.float32)
-        terminal = tf.constant(terminal, dtype=tf.float32)
-
+        terminal_D = tf.constant(terminal, dtype=tf.float32)
+        
+        # 如果回合结束下一个状态重新开始
+        if terminal :
+            s_t = np.stack((x_t,x_t,x_t,x_t,x_t),axis=0)
+        
         # 将观测值存入之前定义的观测存储器D中
-        D.append((x_t, r_t, terminal, action_index_D))
+        D.append((s_t_D, r_t, terminal_D, action_index_D))
+        
         #如果D满了就替换最早的观测
         if len(D) > REPLAY_MEMORY:
             D.popleft()
@@ -209,31 +215,23 @@ def trainNetwork(istrain, epoch):
             # 训练
             print("==================start train====================")
             with tf.GradientTape() as tape:
-                s_t = tf.constant(s_t, dtype=tf.float32)
-                q = net1(s_t[:-1])[0][action_index]
-                q_next = netstar(s_t[1:])[0][action_index] # 下一个状态的Y函数值
+                q = net1(s_t_D[:-1])[0][action_index]
+                q_next = netstar(s_t_D[1:])[0][action_index] # 下一个状态的Y函数值
                 # q_truth = tf.expand_dims(r_t + GAMMA * q_next* (tf.ones(1) - terminal),0)
-                q_truth = r_t + GAMMA * q_next* (tf.ones(1) - terminal)
+                q_truth = r_t + GAMMA * q_next* (tf.ones(1) - terminal_D)
                 # print(q_truth)
                 # print("q=",q,q_truth)
                 loss = tf.losses.MSE(q_truth, q)
 
                 # minibatch
-                for i in random.sample(range(REPLAY_MEMORY - 4), BATCH): 
-                    b_s = tf.concat((D[i][0],D[i+1][0],D[i+2][0],D[i+3][0],D[i+4][0]),axis=0)
-                    b_r = D[i+4][1]
-                    b_done = D[i+4][2]
-                    b_a = int(D[i+4][3])
+                for i in random.sample(D, BATCH): 
+                    b_s = i[0]
+                    b_r = i[1]
+                    b_done = i[2]
+                    b_a = int(i[3])
                     q = net1(b_s[:-1])[0][b_a]
-                #     # print(q)
-                #      # 每一行出一个最大值
-                    # if q < -10 :
-                    #     q_truth=tf.expand_dims(tf.constant(-10,dtype=tf.float32),0)
-                    # elif q > 30:
-                    #     q_truth=tf.expand_dims(tf.constant(30,dtype=tf.float32),0)
-                    # else :
                     q_next = netstar(b_s[1:])[0][b_a]
-                    q_truth = tf.expand_dims(b_r + GAMMA * q_next* (tf.ones(1) - b_done),0)
+                    q_truth = b_r + GAMMA * q_next* (tf.ones(1) - b_done)
                         # print(q_truth)
                     
                     loss += tf.losses.MSE(q_truth, q)
@@ -246,7 +244,7 @@ def trainNetwork(istrain, epoch):
             gradients = tape.gradient(loss, net1.trainable_variables)
             optimizer.apply_gradients(zip(gradients, net1.trainable_variables))
 
-            if t % 100==0 and t > OBSERVE:
+            if t % 50==0 and t > OBSERVE:
                 netstar.set_weights(net1.get_weights())
 
             # 每1000轮保存一次网络参数
