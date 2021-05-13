@@ -53,7 +53,7 @@ class FlyingState:
         elif input_actions[4] == 1:
             self.client.moveByRollPitchYawrateThrottleAsync(0.0,0.0,0.0,1.0,0.5).join()
         elif input_actions[5] == 1:
-            self.client.moveByRollPitchYawrateThrottleAsync(0.0,0.0,0.0,0.5,0.5).join()
+            self.client.moveByRollPitchYawrateThrottleAsync(0.0,0.0,0.0,0.45,0.5).join()
         elif input_actions[6] == 1:
             self.client.moveByRollPitchYawrateThrottleAsync(0.0,0.0,0.2,0.6,0.5).join()
         elif input_actions[7] == 1:
@@ -89,13 +89,19 @@ class FlyingState:
         image_data=np.concatenate((image_data,luminance),axis=2)  # 添加亮度信息
 
         score=self.score
-        if Crash_info or self.score < -10:
+        if Crash_info :
             self.score=0
             terminal=True
             self.linkToAirsim()
             reward=-5
             score+=reward
-        if dis_this < 5:
+        elif self.score < -10:
+            self.score=0
+            terminal=True
+            self.linkToAirsim()
+            reward=-3
+            score+=reward
+        elif dis_this < 5:
             self.score=0
             reward = 5
             terminal=True

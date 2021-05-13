@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #============================ 导入所需的库 ===========================================
-from __future__ import print_function
+# from __future__ import print_function
 from re import A
 
 import tensorflow as tf
@@ -28,9 +28,9 @@ ACTIONS = 2 # 2个动作数量
 ACTIONS_NAME=['不动','起飞']  #动作名
 GAMMA = 0.99 # 未来奖励的衰减
 OBSERVE = 20 # 训练前观察积累的轮数
-EPSILON = 0.9
-REPLAY_MEMORY = OBSERVE # 观测存储器D的容量
-BATCH = 6 # 训练batch大小
+EPSILON = 0.15
+REPLAY_MEMORY = 500 # 观测存储器D的容量
+BATCH = 4 # 训练batch大小
 TIMES = 50000
 
 class MyNet(Model):
@@ -139,9 +139,9 @@ def trainNetwork(istrain, epoch):
         else:
             epsilon = 0.1
         if t < 45000 and epoch < 2:
-            learning_r= 0.001 - (0.001-0.00025)*t/45000
+            learning_r= 0.00075 #- (0.001-0.00025)*t/45000
         else :
-            learning_r=0.00025
+            learning_r=0.00075
         optimizer=tf.keras.optimizers.RMSprop(learning_r,0.99,0.0,1e-7)
         
         a_t_to_game = np.zeros([ACTIONS])
@@ -150,7 +150,7 @@ def trainNetwork(istrain, epoch):
         #贪婪策略，有episilon的几率随机选择动作去探索，否则选取Q值最大的动作
         if random.random() <= epsilon and istrain:
             print("----------Random Action----------")
-            action_index = 0 if random.random() < 0.7 else 1
+            action_index = 0 if random.random() < 0.55 else 1
             a_t_to_game[action_index] = 1
         else:
             print("-----------net choice----------------")

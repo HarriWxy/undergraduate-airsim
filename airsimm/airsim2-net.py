@@ -19,7 +19,7 @@ import get_state as state
 
 ACTIONS = 6 # 4个动作数量
 ACTIONS_NAME=['forward','back','roll_right','roll_left','higher','lower','yaw_left','yaw_right']  #动作名
-GAMMA = 0.99 # 未来奖励的衰减
+GAMMA = 0.9 # 未来奖励的衰减
 OBSERVE = 10 # 训练前观察积累的轮数
 EPSILON = 0.95
 REPLAY_MEMORY = 250# 观测存储器D的容量
@@ -48,7 +48,7 @@ class DQN_Net(Model):
         self.p2 = MaxPool2D(pool_size=(2, 2), strides=2, padding='same')  # 池化层
 
         self.flatten = Flatten()
-        self.f1 = Dense(256, activation='relu',
+        self.f1 = Dense(512, activation='relu',
                            kernel_regularizer=tf.keras.regularizers.l2(0.001),
                            kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.01, seed=None),
                            bias_initializer = tf.keras.initializers.Constant(value=0.01))
@@ -115,7 +115,6 @@ class AirsimDQN(object):
         losses=[]
         scores=[]
         Loss=0
-        Q=0
         qs=[]
         # Score=0
 
@@ -143,10 +142,10 @@ class AirsimDQN(object):
             # 学习率
             if t < 1500 :
                 epsilon = EPSILON - (EPSILON-0.1)*t/1500
-                learning_r= 0.001# - (0.001-0.00025)*t/450
+                # learning_r= 0.005# - (0.001-0.00025)*t/450
             else :
                 epsilon = 0.1
-                learning_r=0.00075
+            learning_r=0.00075
             optimizer=tf.keras.optimizers.RMSprop(learning_r,0.99,0.0,1e-7)
             
             a_t_to_game = np.zeros([ACTIONS])
@@ -172,9 +171,9 @@ class AirsimDQN(object):
             s_t = np.concatenate((s_t[1:],x_t_n))
             print("============== score ====================")
             print(score)
-            if t > 1500 :
+            if t > 1800 :
                 scores.append(r_t)
-            
+                qs.append(int(q))
             #if score_one_round >= best:
             #    test = True
 
@@ -223,7 +222,7 @@ class AirsimDQN(object):
                     q_truth = r_t + GAMMA * q_next* (tf.ones(1) - terminal) # 
                     # print("q=",q,q_truth)
                     loss = tf.losses.MSE(q_truth, q)
-                    Q+=int(q)
+                    
 
                     # minibatch
                     for i in random.sample(D, BATCH-1): 
@@ -256,7 +255,6 @@ class AirsimDQN(object):
                     # print("=================model save====================")
                     self.net.save_weights(self.checkpoint_save_path)
                     Loss = Loss/50
-                    Q = Q/50
 
                     # 这是使用tensorboard
                     # with self.train_summary_writer.as_default():
@@ -268,11 +266,9 @@ class AirsimDQN(object):
                     # 在此调用测试函数评估得分
 
                     losses.append(Loss)
-                    qs.append(Q)
                     # scores.append(Score)
                     # Score=0
                     Loss = 0
-                    Q = 0
 
             # 打印信息
 
