@@ -24,7 +24,7 @@ OBSERVE = 10 # 训练前观察积累的轮数
 EPSILON = 0.15
 REPLAY_MEMORY = 250# 观测存储器D的容量
 BATCH = 7 # 训练batch大小
-TIMES = 2000
+TIMES = 5000
 
 class DQN_Net(Model):
     # 使用论文中的标准网络结构
@@ -155,7 +155,8 @@ class AirsimDQN(object):
             if random.random() <= epsilon and istrain:
                 print("----------Random Action----------")
                 dirction = random.randint(0,3)
-                action_index = flying_state.rand_action(dirction)
+                # action_index = flying_state.rand_action(dirction)
+                action_index = random.randint(0,5)
                 a_t_to_game[action_index] = 1
             else:
                 print("-----------net choice----------------")
@@ -171,9 +172,9 @@ class AirsimDQN(object):
             s_t = np.concatenate((s_t[1:],x_t_n))
             print("============== score ====================")
             print(score)
-            if t > 1800 :
-                scores.append(r_t)
-                qs.append(int(q))
+            # if t > 1800 :
+            #     scores.append(r_t)
+            #     qs.append(int(q))
             #if score_one_round >= best:
             #    test = True
 
@@ -282,13 +283,13 @@ class AirsimDQN(object):
         plt.xlabel("time")
         plt.ylabel('loss')
         plt.savefig('savefig'+datetime.datetime.now().strftime('%d-%H-%M')+'.png')
-        plt.figure()
-        plt.title("epochs="+str(self.epoch))
-        plt.plot(scores,'b')
-        plt.xlabel("time")
-        plt.ylabel('score')
-        plt.plot(qs,'c--')
-        plt.savefig('savefig'+datetime.datetime.now().strftime('%d-%H-%M')+'2.png')
+        # plt.figure()
+        # plt.title("epochs="+str(self.epoch))
+        # plt.plot(scores,'b')
+        # plt.xlabel("time")
+        # plt.ylabel('score')
+        # plt.plot(qs,'c--')
+        # plt.savefig('savefig'+datetime.datetime.now().strftime('%d-%H-%M')+'2.png')
 
 
 

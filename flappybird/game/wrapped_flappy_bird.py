@@ -54,14 +54,14 @@ class GameState:
         self.playerVelY    =  0    # player's velocity along Y, default same as playerFlapped
         self.playerMaxVelY =  10   # max vel along Y, max descend speed
         self.playerMinVelY =  -8   # min vel along Y, max ascend speed
-        self.playerAccY    =   1.2   # players downward accleration
+        self.playerAccY    =   1.5   # players downward accleration
         self.playerFlapAcc =  -5   # players speed on flapping
         self.playerFlapped = False # True when player flaps
 
     def frame_step(self, input_actions):
         pygame.event.pump()
 
-        reward = 0
+        reward = 0.1
         terminal = False
 
         if sum(input_actions) != 1:
@@ -92,7 +92,10 @@ class GameState:
 
         # player's movement
         if self.playerVelY < self.playerMaxVelY and not self.playerFlapped:
-            self.playerVelY += self.playerAccY
+            if self.playerVelY < 5 :
+                self.playerVelY += self.playerAccY
+            else :
+                self.playerVelY = 5
         if self.playerFlapped:
             self.playerFlapped = False
         self.playery += min(self.playerVelY, BASEY - self.playery - PLAYER_HEIGHT)
@@ -139,8 +142,9 @@ class GameState:
         SCREEN.blit(IMAGES['player'][self.playerIndex],
                     (self.playerx, self.playery))
 
-        image_data = pygame.surfarray.array3d(pygame.display.get_surface())
+        
         pygame.display.update()
+        image_data = pygame.surfarray.array3d(pygame.display.get_surface())
         FPSCLOCK.tick(FPS)
         score = self.score
         #print self.upperPipes[0]['y'] + PIPE_HEIGHT - int(BASEY * 0.2)
@@ -153,7 +157,7 @@ class GameState:
 def getRandomPipe():
     """returns a randomly generated pipe"""
     # y of gap between upper and lower pipe
-    gapYs = [20, 30, 40, 50, 60, 70, 80, 90]
+    gapYs = [50]#[20, 30, 40, 50, 60, 70, 80, 90]
     index = random.randint(0, len(gapYs)-1)
     gapY = gapYs[index]
 

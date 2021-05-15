@@ -26,8 +26,8 @@ import wrapped_flappy_bird as game
 GAME = 'FlappyBird' # 游戏名称
 ACTIONS = 2 # 2个动作数量
 ACTIONS_NAME=['不动','起飞']  #动作名
-GAMMA = 0.99 # 未来奖励的衰减
-OBSERVE = 20 # 训练前观察积累的轮数
+GAMMA = 0.9 # 未来奖励的衰减
+OBSERVE = 100 # 训练前观察积累的轮数
 EPSILON = 0.15
 REPLAY_MEMORY = 500 # 观测存储器D的容量
 BATCH = 4 # 训练batch大小
@@ -134,14 +134,14 @@ def trainNetwork(istrain, epoch):
         # 根据输入的s_t,选择一个动作a_t
          # 网络的过早介入会导致
         # 学习率
-        if t < 45000:
-            epsilon = EPSILON - (EPSILON-0.1)*t/45000
+        if t < 1000:
+            epsilon = EPSILON - (EPSILON-0.1)*t/1000
         else:
             epsilon = 0.1
-        if t < 45000 and epoch < 2:
-            learning_r= 0.00075 #- (0.001-0.00025)*t/45000
-        else :
-            learning_r=0.00075
+        # if t < 45000 and epoch < 2:
+        #     learning_r= 0.0005 #- (0.001-0.00025)*t/45000
+        # else :
+        learning_r=0.00025
         optimizer=tf.keras.optimizers.RMSprop(learning_r,0.99,0.0,1e-7)
         
         a_t_to_game = np.zeros([ACTIONS])
@@ -150,7 +150,7 @@ def trainNetwork(istrain, epoch):
         #贪婪策略，有episilon的几率随机选择动作去探索，否则选取Q值最大的动作
         if random.random() <= epsilon and istrain:
             print("----------Random Action----------")
-            action_index = 0 if random.random() < 0.55 else 1
+            action_index = 0 if random.random() < 0.75 else 1
             a_t_to_game[action_index] = 1
         else:
             print("-----------net choice----------------")
@@ -163,7 +163,7 @@ def trainNetwork(istrain, epoch):
         # 执行这个动作并观察下一个状态以及reward
         # 也就是执行该动作的奖励加上执行这个动作之后的帧
         x_t, r_t, terminal, score = game_state.frame_step(a_t_to_game)
-        print(terminal)
+        # print(terminal)
         x_t_n = x_t[np.newaxis,:]
         s_t = np.concatenate((s_t[1:],x_t_n))
         print("============== score ====================")
@@ -183,7 +183,7 @@ def trainNetwork(istrain, epoch):
 
         s_t_D = tf.constant(s_t, dtype=tf.float32) # 下一帧
         action_index_D = tf.constant(action_index, dtype=tf.int32)
-        r_t = tf.constant(r_t, dtype=tf.float32)
+        r_t_D = tf.constant(r_t, dtype=tf.float32)
         terminal_D = tf.constant(terminal, dtype=tf.float32)
         
         # 如果回合结束下一个状态重新开始
@@ -191,7 +191,8 @@ def trainNetwork(istrain, epoch):
             s_t = np.stack((x_t,x_t,x_t,x_t,x_t),axis=0)
         
         # 将观测值存入之前定义的观测存储器D中
-        D.append((s_t_D, r_t, terminal_D, action_index_D))
+        if r_t !=0.1:
+            D.append((s_t_D, r_t_D, terminal_D, action_index_D))
         
         #如果D满了就替换最早的观测
         if len(D) > REPLAY_MEMORY:
@@ -218,7 +219,7 @@ def trainNetwork(istrain, epoch):
                 q = net1(s_t_D[:-1])[0][action_index]
                 q_next = netstar(s_t_D[1:])[0][action_index] # 下一个状态的Y函数值
                 # q_truth = tf.expand_dims(r_t + GAMMA * q_next* (tf.ones(1) - terminal),0)
-                q_truth = r_t + GAMMA * q_next* (tf.ones(1) - terminal_D)
+                q_truth = r_t + GAMMA * q_next*(tf.ones(1) - terminal_D)
                 # print(q_truth)
                 # print("q=",q,q_truth)
                 loss = tf.losses.MSE(q_truth, q)
@@ -276,10 +277,6 @@ def trainNetwork(istrain, epoch):
     plt.xlabel("time")
     plt.ylabel('score')
     plt.savefig('savefig'+datetime.datetime.now().strftime('%d-%H-%M')+'2.png')
-    return np.average(losses),np.average(scores)
-
-
-
 
 def main():
     epoch=1
