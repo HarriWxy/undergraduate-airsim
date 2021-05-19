@@ -54,7 +54,7 @@ class MyNet(Model):
         self.p2 = MaxPool2D(pool_size=(2, 2), strides=2, padding='same')  # 池化层
 
         self.flatten = Flatten()
-        self.f1 = Dense(256, activation='relu',
+        self.f1 = Dense(512, activation='relu',
                            kernel_regularizer=tf.keras.regularizers.l2(0.001),
                            kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.01, seed=None),
                            bias_initializer = tf.keras.initializers.Constant(value=0.01))
@@ -126,7 +126,7 @@ def trainNetwork(istrain, epoch):
     do_nothing = np.zeros(ACTIONS)
     do_nothing[0] = 1
     x_t, r_0, terminal, _ = game_state.frame_step(do_nothing)
-    s_t = np.stack((x_t,x_t,x_t,x_t,x_t),axis=0)
+    s_t = np.stack((x_t,x_t,x_t,x_t,x_t,x_t,x_t,x_t,x_t,x_t),axis=0)
 
 
     # 开始训练
@@ -188,7 +188,7 @@ def trainNetwork(istrain, epoch):
         
         # 如果回合结束下一个状态重新开始
         if terminal :
-            s_t = np.stack((x_t,x_t,x_t,x_t,x_t),axis=0)
+            s_t = np.stack((x_t,x_t,x_t,x_t,x_t,x_t,x_t,x_t,x_t,x_t),axis=0)
         
         # 将观测值存入之前定义的观测存储器D中
         if r_t !=0.1:

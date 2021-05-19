@@ -6,7 +6,8 @@ import cv2 as cv
 # 获取airsim飞行状态
 class FlyingState:
     def __init__(self,x,y,z):
-        self.dest=(x,y,z)
+        self.dest = np.array([x,y,z])
+        # self.pts = [np.array([45,-10,-30]),self.dest]
         self.score = 0
         self.client=airsim.MultirotorClient()
         self.linkToAirsim()
@@ -37,7 +38,7 @@ class FlyingState:
         directions[1] = 1 if self.dest[1] > client_pre_pos.y_val else -1 
         # 目标在上
         directions[2] = 1 if self.dest[2] < client_pre_pos.z_val else -1 
-
+        client_pre_pos = np.array([client_pre_pos.x_val,client_pre_pos.y_val,client_pre_pos.z_val])
         if sum(input_actions) != 1:
             raise ValueError('Multiple input actions!')
 
@@ -61,12 +62,13 @@ class FlyingState:
 
         # client state
         client_state=self.client.getMultirotorState().kinematics_estimated
-        client_position=client_state.position
+        client_position=np.array([client_state.position.x_val,client_state.position.y_val,client_state.position.z_val])
         # position and crash
         Crash_info=self.client.simGetCollisionInfo().has_collided
         # rewards:closer +1 or farther -1
-        dis_pre=np.linalg.norm([self.dest[0]-client_pre_pos.x_val,self.dest[1]-client_pre_pos.y_val,self.dest[2]-client_pre_pos.z_val])
-        dis_this=np.linalg.norm([self.dest[0]-client_position.x_val,self.dest[1]-client_position.y_val,self.dest[2]-client_position.z_val])
+        
+        dis_pre = np.linalg.norm(client_pre_pos - self.dest)
+        dis_this = np.linalg.norm(self.dest - client_position)
         if dis_this < dis_pre:
             reward=1
             self.score+=reward
@@ -95,7 +97,7 @@ class FlyingState:
             self.linkToAirsim()
             reward=-5
             score+=reward
-        elif self.score < -15:
+        elif self.score < -10:
             self.score=0
             terminal=True
             self.linkToAirsim()

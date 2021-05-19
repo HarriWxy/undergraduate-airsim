@@ -21,10 +21,10 @@ ACTIONS = 6 # 4个动作数量
 ACTIONS_NAME=['forward','back','roll_right','roll_left','higher','lower','yaw_left','yaw_right']  #动作名
 GAMMA = 0.9 # 未来奖励的衰减
 OBSERVE = 10 # 训练前观察积累的轮数
-EPSILON = 0.95
-REPLAY_MEMORY = 250# 观测存储器D的容量
+EPSILON = 0.85
+REPLAY_MEMORY = 500# 观测存储器D的容量
 BATCH = 7 # 训练batch大小
-TIMES = 5000
+TIMES = 2000
 
 class DQN_Net(Model):
     # 使用论文中的标准网络结构
@@ -52,7 +52,7 @@ class DQN_Net(Model):
                            kernel_regularizer=tf.keras.regularizers.l2(0.001),
                            kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.01, seed=None),
                            bias_initializer = tf.keras.initializers.Constant(value=0.01))
-        self.l1 = LSTM(256,dropout=0.1,kernel_regularizer=tf.keras.regularizers.l2(0.001))
+        # self.l1 = LSTM(256,dropout=0.1,kernel_regularizer=tf.keras.regularizers.l2(0.001))
         self.f2 = Dense(ACTIONS, activation=None,
                            kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.01, seed=None),
                            bias_initializer = tf.keras.initializers.Constant(value=0.01))
@@ -72,12 +72,12 @@ class DQN_Net(Model):
 
         x = self.flatten(x)
         x = self.f1(x)
-        x = tf.expand_dims(x,axis=0)
-        x = self.l1(x)
-        directions = tf.expand_dims(directions,axis=0)
-        x = tf.concat((x,directions),axis=1)
+        # x = tf.expand_dims(x,axis=0)
+        # x = self.l1(x)
+        # directions = tf.expand_dims(directions,axis=0)
+        # x = tf.concat((x,directions),axis=1)
         y = self.f2(x)
-        print("y=",y)
+        # print("y=",y)
         return y
 
 class AirsimDQN(object):
@@ -123,7 +123,7 @@ class AirsimDQN(object):
     #============================ 加载(搜集)数据集 ===========================================
 
         # 打开游戏
-        flying_state = state.FlyingState(0,-30,-10)#random.randint(-30,30),random.randint(-30,30),-30)
+        flying_state = state.FlyingState(38,-15,-30)#random.randint(-30,30),random.randint(-30,30),-30)
 
         # 将每一轮的观测存在D中，之后训练从D中随机抽取batch个数据训练，以打破时间连续导致的相关性，保证神经网络训练所需的随机性。
         D = deque()
@@ -155,8 +155,7 @@ class AirsimDQN(object):
             if random.random() <= epsilon and istrain:
                 print("----------Random Action----------")
                 dirction = random.randint(0,3)
-                # action_index = flying_state.rand_action(dirction)
-                action_index = random.randint(0,5)
+                action_index = flying_state.rand_action(dirction)
                 a_t_to_game[action_index] = 1
             else:
                 print("-----------net choice----------------")
@@ -172,9 +171,9 @@ class AirsimDQN(object):
             s_t = np.concatenate((s_t[1:],x_t_n))
             print("============== score ====================")
             print(score)
-            # if t > 1800 :
-            #     scores.append(r_t)
-            #     qs.append(int(q))
+            if t > 1800 :
+                scores.append(r_t)
+                qs.append(int(q))
             #if score_one_round >= best:
             #    test = True
 
@@ -192,8 +191,8 @@ class AirsimDQN(object):
             directions = tf.convert_to_tensor(directions,dtype=tf.float32)
 
             # 如果回合结束下一个状态重新开始
-            if terminal :
-                s_t = np.stack((x_t,x_t,x_t,x_t,x_t),axis=0)
+            # if terminal :
+            #     s_t = np.stack((x_t,x_t,x_t,x_t,x_t),axis=0)
             # 将观测值存入之前定义的观测存储器D中
             D.append((s_t_D, r_t, terminal_D, action_index_D, directions))
             #如果D满了就替换最早的观测
@@ -218,15 +217,15 @@ class AirsimDQN(object):
                 # 训练
                 print("==================start train====================")
                 with tf.GradientTape() as tape:
-                    q = self.net(s_t_D[:-1],directions)[0][action_index]
-                    q_next = self.netstar(s_t_D[1:],directions)[0][action_index] # 下一个状态的Y函数值
-                    q_truth = r_t + GAMMA * q_next* (tf.ones(1) - terminal) # 
-                    # print("q=",q,q_truth)
-                    loss = tf.losses.MSE(q_truth, q)
+                    # q = self.net(s_t_D[:-1],directions)[0][action_index]
+                    # q_next = self.netstar(s_t_D[1:],directions)[0][action_index] # 下一个状态的Y函数值
+                    # q_truth = r_t + GAMMA * q_next* (tf.ones(1) - terminal) # 
+                    # # print("q=",q,q_truth)
+                    # loss = tf.losses.MSE(q_truth, q)
                     
 
                     # minibatch
-                    for i in random.sample(D, BATCH-1): 
+                    for i in random.sample(D, 1): 
                         b_s = i[0]
                         b_r = i[1]
                         b_done = i[2]
@@ -283,13 +282,13 @@ class AirsimDQN(object):
         plt.xlabel("time")
         plt.ylabel('loss')
         plt.savefig('savefig'+datetime.datetime.now().strftime('%d-%H-%M')+'.png')
-        # plt.figure()
-        # plt.title("epochs="+str(self.epoch))
-        # plt.plot(scores,'b')
-        # plt.xlabel("time")
-        # plt.ylabel('score')
-        # plt.plot(qs,'c--')
-        # plt.savefig('savefig'+datetime.datetime.now().strftime('%d-%H-%M')+'2.png')
+        plt.figure()
+        plt.title("epochs="+str(self.epoch))
+        plt.plot(scores,'b')
+        plt.xlabel("time")
+        plt.ylabel('score')
+        plt.plot(qs,'c--')
+        plt.savefig('savefig'+datetime.datetime.now().strftime('%d-%H-%M')+'2.png')
 
 
 

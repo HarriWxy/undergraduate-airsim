@@ -21,10 +21,10 @@ ACTIONS = 6 # 4个动作数量
 ACTIONS_NAME=['forward','back','roll_right','roll_left','higher','lower','yaw_left','yaw_right']  #动作名
 GAMMA = 0.9 # 未来奖励的衰减
 OBSERVE = 10 # 训练前观察积累的轮数
-EPSILON = 0.95
-REPLAY_MEMORY = 250# 观测存储器D的容量
+EPSILON = 0.85
+REPLAY_MEMORY = 500# 观测存储器D的容量
 BATCH = 7 # 训练batch大小
-TIMES = 5000
+TIMES = 2000
 
 class DQN_Net(Model):
     # 使用论文中的标准网络结构
@@ -77,7 +77,7 @@ class DQN_Net(Model):
         directions = tf.expand_dims(directions,axis=0)
         x = tf.concat((x,directions),axis=1)
         y = self.f2(x)
-        print("y=",y)
+        # print("y=",y)
         return y
 
 class AirsimDQN(object):
@@ -123,7 +123,7 @@ class AirsimDQN(object):
     #============================ 加载(搜集)数据集 ===========================================
 
         # 打开游戏
-        flying_state = state.FlyingState(0,-30,-10)#random.randint(-30,30),random.randint(-30,30),-30)
+        flying_state = state.FlyingState(38,-15,-30)#random.randint(-30,30),random.randint(-30,30),-30)
 
         # 将每一轮的观测存在D中，之后训练从D中随机抽取batch个数据训练，以打破时间连续导致的相关性，保证神经网络训练所需的随机性。
         D = deque()
@@ -155,8 +155,7 @@ class AirsimDQN(object):
             if random.random() <= epsilon and istrain:
                 print("----------Random Action----------")
                 dirction = random.randint(0,3)
-                # action_index = flying_state.rand_action(dirction)
-                action_index = random.randint(0,5)
+                action_index = flying_state.rand_action(dirction)
                 a_t_to_game[action_index] = 1
             else:
                 print("-----------net choice----------------")
@@ -172,9 +171,9 @@ class AirsimDQN(object):
             s_t = np.concatenate((s_t[1:],x_t_n))
             print("============== score ====================")
             print(score)
-            # if t > 1800 :
-            #     scores.append(r_t)
-            #     qs.append(int(q))
+            if t > 1800 :
+                scores.append(r_t)
+                qs.append(int(q))
             #if score_one_round >= best:
             #    test = True
 
@@ -283,13 +282,13 @@ class AirsimDQN(object):
         plt.xlabel("time")
         plt.ylabel('loss')
         plt.savefig('savefig'+datetime.datetime.now().strftime('%d-%H-%M')+'.png')
-        # plt.figure()
-        # plt.title("epochs="+str(self.epoch))
-        # plt.plot(scores,'b')
-        # plt.xlabel("time")
-        # plt.ylabel('score')
-        # plt.plot(qs,'c--')
-        # plt.savefig('savefig'+datetime.datetime.now().strftime('%d-%H-%M')+'2.png')
+        plt.figure()
+        plt.title("epochs="+str(self.epoch))
+        plt.plot(scores,'b')
+        plt.xlabel("time")
+        plt.ylabel('score')
+        plt.plot(qs,'c--')
+        plt.savefig('savefig'+datetime.datetime.now().strftime('%d-%H-%M')+'2.png')
 
 
 

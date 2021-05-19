@@ -1,7 +1,7 @@
 import numpy as np
 import airsim
 import cv2 as cv
-
+from numpy.core.fromnumeric import reshape, shape
 
 # 获取airsim飞行状态
 class FlyingState:
@@ -27,16 +27,8 @@ class FlyingState:
         # 执行操作并获取帧
         reward = 0
         terminal = False
-        # 获取当前距离目标方向
         client_state=self.client.getMultirotorState()
         client_pre_pos=client_state.kinematics_estimated.position
-        directions=np.zeros(3)
-        # 目标在前
-        directions[0] = 1 if self.dest[0] > client_pre_pos.x_val else -1 
-        # 目标在右
-        directions[1] = 1 if self.dest[1] > client_pre_pos.y_val else -1 
-        # 目标在上
-        directions[2] = 1 if self.dest[2] < client_pre_pos.z_val else -1 
 
         if sum(input_actions) != 1:
             raise ValueError('Multiple input actions!')
@@ -53,11 +45,11 @@ class FlyingState:
         elif input_actions[4] == 1:
             self.client.moveByRollPitchYawrateThrottleAsync(0.0,0.0,0.0,1.0,0.5).join()
         elif input_actions[5] == 1:
-            self.client.moveByRollPitchYawrateThrottleAsync(0.0,0.0,0.0,0.45,0.5).join()
+            self.client.moveByRollPitchYawrateThrottleAsync(0.0,0.0,0.0,0.5,0.5).join()
         elif input_actions[6] == 1:
-            self.client.moveByRollPitchYawrateThrottleAsync(0.0,0.0,0.2,0.6,0.5).join()
+            self.client.moveByRollPitchYawrateThrottleAsync(0.0,0.0,15.0,0.8,0.5).join()
         elif input_actions[7] == 1:
-            self.client.moveByRollPitchYawrateThrottleAsync(0.0,0.0,-0.2,0.6,0.5).join()
+            self.client.moveByRollPitchYawrateThrottleAsync(0.0,0.0,-15.0,0.8,0.5).join()
 
         # client state
         client_state=self.client.getMultirotorState().kinematics_estimated
@@ -81,45 +73,38 @@ class FlyingState:
         # print(image_data)
         # image_data=np.reshape(image_data,[response.height,response.width,3])
         image_data=np.flipud(image_data)
-        # image_data=image_data[:,:]
         # # [height,width,channel]=image_data.shape
         ret, image_data = cv.threshold(image_data, 1, 255, cv.THRESH_BINARY)
         luminance=cv.cvtColor(image_data, cv.COLOR_BGR2HSV)
-        luminance=luminance[:,:,2,np.newaxis]
-        image_data=np.concatenate((image_data,luminance),axis=2)  # 添加亮度信息
-
+        # # image_data=image_data.astype(np.float)
+        image_data=np.array([image_data[:,:,0],image_data[:,:,1],image_data[:,:,2],luminance[:,:,2]],dtype=np.int)# 添加亮度信息
+        # image_temp=np.array([])
+        # image_data=cv.cvtColor(image_data,cv.COLOR_BGR2GRAY)
+        # print(image_data.shape)
         score=self.score
-        if Crash_info :
+        if Crash_info or self.score < -10:
             self.score=0
             terminal=True
             self.linkToAirsim()
-            reward=-5
+            reward=-1
             score+=reward
-        elif self.score < -15:
+        if dis_this < 1:
             self.score=0
-            terminal=True
-            self.linkToAirsim()
-            reward=-3
-            score+=reward
-        elif dis_this < 5:
-            self.score=0
-            reward = 5
+            reward = 100
             terminal=True
             self.linkToAirsim()
             score+=reward
-
-        return image_data, reward, terminal, score, directions
+        return image_data, reward, terminal, score
 
     def rand_action(self,randint):
         client_state=self.client.getMultirotorState().kinematics_estimated
-        if randint == 0:
+        if randint == 1:
             return 0 if self.dest[0] > client_state.position.x_val else 1
-        elif randint == 1:
+        elif randint == 2:
             return 2 if self.dest[1] > client_state.position.y_val else 3
-        else:#if randint == 2:
+        else :
             return 4 if self.dest[2] < client_state.position.z_val else 5
-        # else:
-        #     return 7 if self.dest[1] > client_state.position.y_val else 6
+
 
 
 # responses=client.simGetImages([

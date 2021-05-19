@@ -148,9 +148,11 @@ class GameState:
         FPSCLOCK.tick(FPS)
         score = self.score
         #print self.upperPipes[0]['y'] + PIPE_HEIGHT - int(BASEY * 0.2)
+        # print("dasf",image_data.shape)
+        image_data=cv.resize(image_data,(84,84))
+        # print("dadd",image_data.shape)
         luminance=cv.cvtColor(image_data, cv.COLOR_BGR2HSV)
         luminance=luminance[:,:,2,np.newaxis]
-        # # image_data=image_data.astype(np.float)
         image_data=np.concatenate((image_data,luminance),axis=2)  # 添加亮度信息
         return image_data, reward, terminal, score
 
